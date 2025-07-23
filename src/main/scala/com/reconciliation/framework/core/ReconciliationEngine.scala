@@ -33,8 +33,7 @@ class ReconciliationEngine(spark: SparkSession, config: ReconciliationConfig) ex
       log.info(s"Reconciliation finished with status: ${result.status}")
 
       val auditWriter = new AuditWriter(spark, config)
-      auditWriter.writeAuditSummary(result)
-      auditWriter.writeMismatchDetails(result)
+      auditWriter.writeAuditLog(result)
 
       val mailGenerator = new HtmlMailGenerator(config)
       mailGenerator.sendEmail(result)

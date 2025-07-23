@@ -6,7 +6,7 @@ INSERT INTO RECON_CONFIG (
     DO_COLUMN_COMPARISON, DO_COUNT_RECONCILIATION, DO_EXTRA_MISSING_CHECK, DO_SCHEMA_DRIFT_DETECTION,
     COLUMN_MAPPINGS,
     EMAIL_RECIPIENTS, EMAIL_SUBJECT,
-    AUDIT_HIVE_TABLE, MISMATCH_HIVE_TABLE,
+    AUDIT_HIVE_TABLE,
     IS_ACTIVE
 ) VALUES (
     1, 'SALES_CSV_TO_HIVE', 'SOURCE_TO_TARGET',
@@ -15,7 +15,7 @@ INSERT INTO RECON_CONFIG (
     'Y', 'Y', 'Y', 'Y',
     'ORDER_ID:SALE_ID,PRODUCT_ID:PROD_ID,SALE_AMOUNT:REVENUE,SALE_DATE:TXN_DATE',
     'user1@example.com,user2@example.com', 'Sales Reconciliation Report',
-    'sales_recon.audit_summary', 'sales_recon.mismatch_details',
+    'sales_recon.audit_log',
     'Y'
 );
 
@@ -27,7 +27,7 @@ INSERT INTO RECON_CONFIG (
     DO_BUSINESS_RULE_VALIDATION, DO_THRESHOLD_VALIDATION,
     THRESHOLD_SETTINGS,
     EMAIL_RECIPIENTS, EMAIL_SUBJECT,
-    AUDIT_HIVE_TABLE, MISMATCH_HIVE_TABLE,
+    AUDIT_HIVE_TABLE,
     IS_ACTIVE
 ) VALUES (
     2, 'INVENTORY_VALIDATION', 'SOURCE_TO_SQL',
@@ -36,6 +36,6 @@ INSERT INTO RECON_CONFIG (
     'Y', 'Y',
     'STOCK_LEVEL:absolute:10',
     'inventory_manager@example.com', 'Inventory Validation Report',
-    'inventory.audit_summary', 'inventory.mismatch_details',
+    'inventory.audit_log',
     'Y'
 );

@@ -26,9 +26,83 @@ This is a generic, configuration-driven reconciliation framework built using Apa
     - **HTML Email Reports**: Sends detailed HTML reports to configured recipients.
 - **Modular and Extensible**: Built with a clean, modular architecture that is easy to extend.
 
-## Configuration Table Schema
+## Architecture
 
-The entire framework is controlled by the `RECON_CONFIG` table in an Oracle database.
+```
++---------------------------+
+|      Oracle DB            |
+|  (RECON_CONFIG Table)     |
++-------------+-------------+
+              |
+              v
++-------------+-------------+
+|    Spark Application      |
+|        (Main.scala)       |
++-------------+-------------+
+              |
+              v
++-------------+-------------+
+| OracleConfigLoader        |
++-------------+-------------+
+              |
+              v
++-------------+-------------+
+| ReconciliationEngine      |
++---+----------+---------+--+
+    |          |         |
+    v          v         v
++---+---+  +---+---+  +--+--+
+| Data- |  | Recon |  | SQL |
+| Reader|  | Type  |  | Exec|
++-------+  | Exec  |  +-----+
+           +-------+
+              |
+              v
++-------------+-------------+
+|      AuditWriter          |
++-------------+-------------+
+              |
+              v
++-------------+-------------+
+|      Hive Audit Table     |
++---------------------------+
+```
+
+## Configuration Parameters
+
+The `RECON_CONFIG` table holds all the configuration for the reconciliation jobs. Below is a detailed explanation of each parameter:
+
+| Parameter | Description |
+|---|---|
+| `JOB_ID` | Unique identifier for the reconciliation job. |
+| `JOB_NAME` | Unique name for the reconciliation job. Used to trigger the job. |
+| `RECON_MODE` | The mode of reconciliation. Either `SOURCE_TO_TARGET` or `SOURCE_TO_SQL`. |
+| `SOURCE_TYPE` | The type of the source data. Supported values: `CSV`, `EXCEL`, `TEXT`, `DAT`, `PARQUET`, `ORC`, `HIVE`, `JDBC`. |
+| `SOURCE_PATH` | The path to the source file (for file-based sources). |
+| `SOURCE_JDBC_URL` | The JDBC URL for the source database. |
+| `SOURCE_JDBC_USER` | The username for the source database. |
+| `SOURCE_JDBC_PASSWORD` | The password for the source database. |
+| `SOURCE_JDBC_DRIVER` | The JDBC driver for the source database. |
+| `SOURCE_HIVE_TABLE` | The name of the source Hive table. |
+| `SOURCE_PRIMARY_KEYS` | Comma-separated list of primary key columns for the source. |
+| `SOURCE_DELIMITER` | The delimiter for text-based source files (e.g., `,` for CSV, `|` for DAT). |
+| `TARGET_TYPE` | The type of the target data. Supported values: `HIVE`, `PARQUET`, `ORC`. |
+| `TARGET_PATH` | The path to the target file (for file-based targets). |
+| `TARGET_HIVE_TABLE` | The name of the target Hive table. |
+| `TARGET_PRIMARY_KEYS` | Comma-separated list of primary key columns for the target. |
+| `RECON_SQL` | The SQL query to be executed for `SOURCE_TO_SQL` mode reconciliation. |
+| `DO_COLUMN_COMPARISON` | Flag (`Y`/`N`) to enable/disable column-level comparison. |
+| `DO_BUSINESS_RULE_VALIDATION` | Flag (`Y`/`N`) to enable/disable business rule validation. |
+| `DO_COUNT_RECONCILIATION` | Flag (`Y`/`N`) to enable/disable count-level reconciliation. |
+| `DO_EXTRA_MISSING_CHECK` | Flag (`Y`/`N`) to enable/disable extra/missing record check. |
+| `DO_THRESHOLD_VALIDATION` | Flag (`Y`/`N`) to enable/disable threshold-based validation. |
+| `DO_SCHEMA_DRIFT_DETECTION` | Flag (`Y`/`N`) to enable/disable schema drift detection. |
+| `COLUMN_MAPPINGS` | Comma-separated list of `source_column:target_column` mappings. |
+| `THRESHOLD_SETTINGS` | Comma-separated list of `column:type:value` for threshold validation (e.g., `amount:absolute:100`). |
+| `EMAIL_RECIPIENTS` | Comma-separated list of email addresses for the report. |
+| `EMAIL_SUBJECT` | The subject of the email report. |
+| `AUDIT_HIVE_TABLE` | The name of the Hive table to store audit logs. |
+| `IS_ACTIVE` | Flag (`Y`/`N`) to enable/disable the job. |
 
 ```sql
 CREATE TABLE RECON_CONFIG (

@@ -55,17 +55,26 @@ class HtmlMailGenerator(config: ReconciliationConfig) {
   }
 
   private def buildMismatchDetails(result: ReconciliationResult): String = {
-    // In a real implementation, you would iterate through the results and build detailed tables
-    // for each type of mismatch. For brevity, this is a simplified example.
     val sb = new StringBuilder
+
     result.extraMissingResult.foreach { res =>
       sb.append("<h3>Extra/Missing Records</h3>")
       sb.append(s"<p>Missing in Target: ${res.missingInTarget.count()}</p>")
+      if (res.missingInTarget.count() > 0 && res.missingInTarget.count() < 10) {
+        sb.append(res.missingInTarget.limit(10).toDF().toHtml)
+      }
       sb.append(s"<p>Extra in Source: ${res.extraInSource.count()}</p>")
+      if (res.extraInSource.count() > 0 && res.extraInSource.count() < 10) {
+        sb.append(res.extraInSource.limit(10).toDF().toHtml)
+      }
     }
     result.columnComparisonResults.filterNot(_.mismatches.isEmpty).foreach { res =>
-      sb.append(s"<h3>Column Mismatches: ${res.sourceColumn}</h3>")
-      sb.append(s"<p>Count: ${res.mismatches.count()}</p>")
+      sb.append(s"<h3>Column Mismatches: ${res.sourceColumn} vs ${res.targetColumn}</h3>")
+      val mismatchCount = res.mismatches.count()
+      sb.append(s"<p>Count: $mismatchCount</p>")
+      if (mismatchCount > 0 && mismatchCount < 10) {
+        sb.append(res.mismatches.limit(10).toDF().toHtml)
+      }
     }
     sb.toString()
   }

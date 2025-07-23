@@ -46,10 +46,11 @@ class AuditWriter(spark: SparkSession, config: ReconciliationConfig) {
 
   private def writeMismatches(df: DataFrame, mismatchType: String): Unit = {
     if (!df.isEmpty) {
-      df.withColumn("job_id", lit(config.jobId))
+      val finalDf = df.withColumn("job_id", lit(config.jobId))
         .withColumn("mismatch_type", lit(mismatchType))
         .withColumn("execution_timestamp", lit(Timestamp.from(Instant.now())))
-        .write
+
+      finalDf.write
         .mode("append")
         .format("hive")
         .saveAsTable(config.mismatchHiveTable)

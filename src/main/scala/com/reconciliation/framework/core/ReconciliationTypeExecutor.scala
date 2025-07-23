@@ -69,14 +69,37 @@ class ReconciliationTypeExecutor(spark: SparkSession, config: ReconciliationConf
   }
 
   private def columnComparison(source: DataFrame, target: DataFrame): Seq[ColumnComparisonResult] = {
-    val mappedTarget = ColumnMapper.mapColumns(target, config)
+    val sourcePKs = config.sourcePrimaryKeys
+    val targetPKs = config.targetPrimaryKeys
+    val pkMapping = sourcePKs.zip(targetPKs).toMap
+
+    val aliasedTarget = targetPKs.foldLeft(target) { (df, pk) =>
+      df.withColumnRenamed(pk, pkMapping.find(_._2 == pk).get._1)
+    }
+
+    val mappedTarget = ColumnMapper.mapColumns(aliasedTarget, config)
     val joinKeys = config.sourcePrimaryKeys
     val joined = source.join(mappedTarget, joinKeys, "inner")
 
-    config.columnMappings.map { case (sourceCol, targetCol) =>
-      val mismatches = joined.filter(col(sourceCol) =!= col(targetCol))
-        .select(joinKeys.map(col) :+ col(sourceCol).as(s"${sourceCol}_source") :+ col(targetCol).as(s"${targetCol}_target"): _*)
-      ColumnComparisonResult(sourceCol, targetCol, mismatches)
+    config.columnMappings.flatMap { case (sourceCol, targetCol) =>
+      val mismatchExpr = col(sourceCol) =!= col(targetCol)
+      val mismatches = joined.filter(mismatchExpr)
+      if (mismatches.isEmpty) {
+        None
+      } else {
+        Some(
+          ColumnComparisonResult(
+            sourceColumn = sourceCol,
+            targetColumn = targetCol,
+            mismatches = mismatches.select(
+              concat_ws(",", joinKeys.map(col): _*).as("primary_key"),
+              lit(sourceCol).as("mismatched_column"),
+              col(sourceCol).cast("string").as("source_value"),
+              col(targetCol).cast("string").as("target_value")
+            )
+          )
+        )
+      }
     }.toSeq
   }
 

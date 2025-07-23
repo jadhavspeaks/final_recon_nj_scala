@@ -1,0 +1,9 @@
+target/
+*.jar
+*.class
+.bsp/
+.bloop/
+.metals/
+.idea/
+*.log
+.DS_Store

@@ -33,15 +33,22 @@ class AuditWriter(spark: SparkSession, config: ReconciliationConfig) {
   def writeAuditLog(result: ReconciliationResult): Unit = {
     val executionTimestamp = Timestamp.from(Instant.now())
 
-    val auditDetails = AuditDetails(
-      schema_drift = result.schemaDriftResults,
-      extra_missing = result.extraMissingResult,
-      column_comparison = result.columnComparisonResults,
-      threshold_validation = result.thresholdValidationResults,
-      business_rule_validation = result.businessRuleValidationResult
-    )
-
-    val detailsJson = new com.google.gson.Gson().toJson(auditDetails)
+    val detailsJson = s"""
+      {
+        "schema_drift": ${result.schemaDriftResults.map(r => s"""{"missing_in_target": [${r.missingInTarget.map(s => s""""$s"""").mkString(",")}],"extra_in_target": [${r.extraInTarget.map(s => s""""$s"""").mkString(",")}],"type_mismatches": [${r.typeMismatches.map(s => s""""$s"""").mkString(",")}]}""").getOrElse("null")},
+        "extra_missing": {
+          "missing_in_target_count": ${result.extraMissingResult.map(_.missingInTarget.count()).getOrElse(0)},
+          "extra_in_source_count": ${result.extraMissingResult.map(_.extraInSource.count()).getOrElse(0)}
+        },
+        "column_comparison": [
+          ${result.columnComparisonResults.map(r => s"""{"source_column": "${r.sourceColumn}","target_column": "${r.targetColumn}","mismatch_count": ${r.mismatches.count()}}""").mkString(",")}
+        ],
+        "threshold_validation": [
+          ${result.thresholdValidationResults.map(r => s"""{"column_name": "${r.columnName}","breach_count": ${r.breaches.count()}}""").mkString(",")}
+        ],
+        "business_rule_validation_mismatch_count": ${result.businessRuleValidationResult.map(_.count()).getOrElse(0)}
+      }
+    """
 
     val auditRecord = AuditRecord(
       job_id = config.jobId,

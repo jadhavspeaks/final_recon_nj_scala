@@ -81,13 +81,13 @@ class ReconciliationTypeExecutor(spark: SparkSession, config: ReconciliationConf
     val joinKeys = config.sourcePrimaryKeys
 
     val aliasedMappedTarget = config.columnMappings.foldLeft(mappedTarget) {
-      case (df, (sourceCol, targetCol)) => df.withColumnRenamed(targetCol, s"${targetCol}_aliased")
+      case (df, (sourceCol, targetCol)) => df.withColumnRenamed(targetCol, sourceCol)
     }
 
-    val joined = source.join(aliasedMappedTarget, joinKeys, "inner")
+    val joined = source.as("s").join(aliasedMappedTarget.as("t"), joinKeys, "inner")
 
     config.columnMappings.flatMap { case (sourceCol, targetCol) =>
-      val mismatchExpr = col(sourceCol) =!= col(s"${targetCol}_aliased")
+      val mismatchExpr = col(s"s.$sourceCol") =!= col(s"t.$sourceCol")
       val mismatches = joined.filter(mismatchExpr)
       if (mismatches.isEmpty) {
         None
@@ -97,10 +97,10 @@ class ReconciliationTypeExecutor(spark: SparkSession, config: ReconciliationConf
             sourceColumn = sourceCol,
             targetColumn = targetCol,
             mismatches = mismatches.select(
-              concat_ws(",", joinKeys.map(col): _*).as("primary_key"),
+              concat_ws(",", joinKeys.map(c => col(s"s.$c")): _*).as("primary_key"),
               lit(sourceCol).as("mismatched_column"),
-              col(sourceCol).cast("string").as("source_value"),
-              col(s"${targetCol}_aliased").cast("string").as("target_value")
+              col(s"s.$sourceCol").cast("string").as("source_value"),
+              col(s"t.$sourceCol").cast("string").as("target_value")
             )
           )
         )

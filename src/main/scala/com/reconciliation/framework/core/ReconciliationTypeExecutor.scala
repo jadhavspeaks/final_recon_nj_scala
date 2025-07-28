@@ -59,7 +59,7 @@ class ReconciliationTypeExecutor(spark: SparkSession, config: ReconciliationConf
   private def countReconciliation(source: DataFrame, target: DataFrame): (Long, Long, Boolean) = {
     val sourceCount = source.count()
     val targetCount = target.count()
-    (sourceCount, targetCount, sourceCount.equals(targetCount))
+    (sourceCount, targetCount, sourceCount.toString.equalsIgnoreCase(targetCount.toString))
   }
 
   private def schemaDriftDetection(source: DataFrame, target: DataFrame): SchemaDriftResult = {

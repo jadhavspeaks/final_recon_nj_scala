@@ -18,6 +18,16 @@ case class AuditSummary(
   countMatch: Boolean
 )
 
+case class AuditMismatch(
+  job_id: Long,
+  job_name: String,
+  execution_timestamp: Timestamp,
+  audit_type: String,
+  status: String,
+  mismatch_type: String,
+  mismatch_details: String
+)
+
 class AuditWriter(spark: SparkSession, config: ReconciliationConfig) {
   import spark.implicits._
 
@@ -61,8 +71,11 @@ class AuditWriter(spark: SparkSession, config: ReconciliationConfig) {
                         .withColumn("execution_timestamp", lit(executionTimestamp))
                         .withColumn("audit_type", lit("MISMATCH"))
                         .withColumn("status", lit(result.status))
+                        .withColumn("mismatch_details", to_json(struct(df.columns.map(col): _*)))
 
-        auditDf.write
+        auditDf.select("job_id", "job_name", "execution_timestamp", "audit_type", "status", "mismatch_type", "mismatch_details")
+          .as[AuditMismatch]
+          .write
           .mode("append")
           .format("hive")
           .saveAsTable(config.auditHiveTable)

@@ -79,7 +79,10 @@ class ReconciliationTypeExecutor(spark: SparkSession, config: ReconciliationConf
 
     val mappedTarget = ColumnMapper.mapColumns(aliasedTarget, config)
     val joinKeys = config.sourcePrimaryKeys
-    val joined = source.join(mappedTarget, joinKeys, "inner")
+    val aliasedMappedTarget = config.columnMappings.foldLeft(mappedTarget) {
+      case (df, (sourceCol, targetCol)) => df.withColumnRenamed(targetCol, sourceCol)
+    }
+    val joined = source.join(aliasedMappedTarget, joinKeys, "inner")
 
     config.columnMappings.flatMap { case (sourceCol, targetCol) =>
       val mismatchExpr = col(sourceCol) =!= col(targetCol)

@@ -11,7 +11,10 @@ class HtmlMailGenerator(config: ReconciliationConfig) {
 
   def sendEmail(result: ReconciliationResult): Unit = {
     val props = new Properties()
-    // Configure mail server properties here (e.g., mail.smtp.host)
+    props.put("mail.smtp.host", "your_smtp_host")
+    props.put("mail.smtp.port", "your_smtp_port")
+    props.put("mail.smtp.auth", "true")
+    props.put("mail.smtp.starttls.enable", "true")
 
     val session = Session.getInstance(props, null)
 

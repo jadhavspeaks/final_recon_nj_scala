@@ -7,18 +7,24 @@ import org.apache.spark.sql.functions._
 import java.sql.Timestamp
 import java.time.Instant
 
+case class AuditDetails(
+  schema_drift: Option[SchemaDriftResult],
+  extra_missing: Option[ExtraMissingResult],
+  column_comparison: Seq[ColumnComparisonResult],
+  threshold_validation: Seq[ThresholdValidationResult],
+  business_rule_validation: Option[DataFrame]
+)
+
 case class AuditRecord(
   job_id: Long,
   job_name: String,
   execution_timestamp: Timestamp,
-  audit_type: String,
   status: String,
-  sourceCount: Option[Long],
-  targetCount: Option[Long],
-  countMatch: Option[Boolean],
-  execution_time_in_seconds: Option[Long],
-  mismatch_type: Option[String],
-  mismatch_details: Option[String]
+  source_count: Long,
+  target_count: Long,
+  count_match: Boolean,
+  execution_time_in_seconds: Long,
+  details: String
 )
 
 class AuditWriter(spark: SparkSession, config: ReconciliationConfig) {
@@ -27,67 +33,30 @@ class AuditWriter(spark: SparkSession, config: ReconciliationConfig) {
   def writeAuditLog(result: ReconciliationResult): Unit = {
     val executionTimestamp = Timestamp.from(Instant.now())
 
-    val summaryRecord = AuditRecord(
+    val auditDetails = AuditDetails(
+      schema_drift = result.schemaDriftResults,
+      extra_missing = result.extraMissingResult,
+      column_comparison = result.columnComparisonResults,
+      threshold_validation = result.thresholdValidationResults,
+      business_rule_validation = result.businessRuleValidationResult
+    )
+
+    val detailsJson = new com.google.gson.Gson().toJson(auditDetails)
+
+    val auditRecord = AuditRecord(
       job_id = config.jobId,
       job_name = config.jobName,
       execution_timestamp = executionTimestamp,
-      audit_type = "SUMMARY",
       status = result.status,
-      sourceCount = Some(result.sourceCount),
-      targetCount = Some(result.targetCount),
-      countMatch = Some(result.countMatch),
-      execution_time_in_seconds = Some((result.endTime - result.startTime) / 1000),
-      mismatch_type = None,
-      mismatch_details = None
+      source_count = result.sourceCount,
+      target_count = result.targetCount,
+      count_match = result.countMatch,
+      execution_time_in_seconds = (result.endTime - result.startTime) / 1000,
+      details = detailsJson
     )
 
-    val mismatchRecords = (
-      result.extraMissingResult.map(r => Seq(
-        r.missingInTarget.withColumn("mismatch_type", lit("missing_in_target")),
-        r.extraInSource.withColumn("mismatch_type", lit("extra_in_source"))
-      )).getOrElse(Seq.empty) ++
-      result.columnComparisonResults.map(r => r.mismatches.withColumn("mismatch_type", lit(s"column_mismatch_${r.sourceColumn}"))) ++
-      result.thresholdValidationResults.map(r => r.breaches.withColumn("mismatch_type", lit(s"threshold_breach_${r.columnName}"))) ++
-      result.businessRuleValidationResult.map(df => Seq(df.withColumn("mismatch_type", lit("business_rule_mismatch")))).getOrElse(Seq.empty) ++
-      result.schemaDriftResults.map { r =>
-        val missingInTarget = spark.createDataset(r.missingInTarget.toSeq).toDF("mismatch_details").withColumn("mismatch_type", lit("schema_drift_missing_in_target"))
-        val extraInTarget = spark.createDataset(r.extraInTarget.toSeq).toDF("mismatch_details").withColumn("mismatch_type", lit("schema_drift_extra_in_target"))
-        val typeMismatches = spark.createDataset(r.typeMismatches.toSeq).toDF("mismatch_details").withColumn("mismatch_type", lit("schema_drift_type_mismatch"))
-        Seq(missingInTarget, extraInTarget, typeMismatches)
-      }.getOrElse(Seq.empty)
-    ).flatMap { df =>
-      if (!df.isEmpty) {
-        val auditDf = df.withColumn("job_id", lit(config.jobId))
-                        .withColumn("job_name", lit(config.jobName))
-                        .withColumn("execution_timestamp", lit(executionTimestamp))
-                        .withColumn("audit_type", lit("MISMATCH"))
-                        .withColumn("status", lit(result.status))
-                        .withColumn("mismatch_details", to_json(struct(df.columns.map(c => col(c).cast("string")): _*)))
-
-        val auditRecord = auditDf.select(
-          col("job_id"),
-          col("job_name"),
-          col("execution_timestamp"),
-          col("audit_type"),
-          col("status"),
-          lit(null).cast("long").as("sourceCount"),
-          lit(null).cast("long").as("targetCount"),
-          lit(null).cast("boolean").as("countMatch"),
-          lit(null).cast("long").as("execution_time_in_seconds"),
-          col("mismatch_type"),
-          col("mismatch_details")
-        ).as[AuditRecord]
-        Seq(auditRecord.first())
-      } else {
-        Seq.empty
-      }
-    }
-
-    val auditData = spark.createDataset(Seq(summaryRecord))
-    val mismatchData = spark.createDataset(mismatchRecords)
-
-    auditData.unionByName(mismatchData)
-      .write
+    val auditData = spark.createDataset(Seq(auditRecord))
+    auditData.write
       .mode("append")
       .format("hive")
       .saveAsTable(config.auditHiveTable)

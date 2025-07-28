@@ -46,82 +46,69 @@ class HtmlMailGenerator(config: ReconciliationConfig) {
       </style></head>
       <body>
         <h2>Reconciliation Report for ${result.jobName}</h2>
-        <p><strong>Status: <span class="status">${result.status}</span></strong></p>
-        <h3>Summary</h3>
-        <table>
-          <tr><th>Metric</th><th>Value</th></tr>
-          <tr><td>Source Count</td><td>${result.sourceCount}</td></tr>
-          <tr><td>Target Count</td><td>${result.targetCount}</td></tr>
-          <tr><td>Count Match</td><td>${if(result.countMatch) "Yes" else "No"}</td></tr>
-          <tr><td>Execution Time (seconds)</td><td>${(result.endTime - result.startTime) / 1000}</td></tr>
-        </table>
-        ${buildMismatchDetails(result)}
+        <p><strong>Status: <span class="status">${result.status}</span> | Execution Time (seconds): ${(result.endTime - result.startTime) / 1000}</strong></p>
+        ${buildDetailsTable(result)}
       </body>
     </html>
     """
   }
 
-  private def buildMismatchDetails(result: ReconciliationResult): String = {
+  private def buildDetailsTable(result: ReconciliationResult): String = {
     val sb = new StringBuilder
+    sb.append("<table>")
+    sb.append("<tr><th>Check</th><th>Result</th></tr>")
 
+    // Count Reconciliation
+    sb.append(s"<tr><td>Count Reconciliation</td><td>${if (result.countMatch) "Matched" else "Mismatched"} (Source: ${result.sourceCount}, Target: ${result.targetCount})</td></tr>")
+
+    // Schema Drift
     if (config.doSchemaDriftDetection) {
-      sb.append("<h3>Schema Drift</h3>")
-      result.schemaDriftResults.foreach { res =>
-        sb.append(s"<p>Missing in Target: ${res.missingInTarget.mkString(", ")}</p>")
-        sb.append(s"<p>Extra in Target: ${res.extraInTarget.mkString(", ")}</p>")
-        sb.append(s"<p>Type Mismatches: ${res.typeMismatches.mkString(", ")}</p>")
-      }
+      val driftResult = result.schemaDriftResults.map { res =>
+        if (res.missingInTarget.isEmpty && res.extraInTarget.isEmpty && res.typeMismatches.isEmpty) {
+          "No drift detected"
+        } else {
+          s"Missing in Target: ${res.missingInTarget.mkString(", ")}<br>" +
+          s"Extra in Target: ${res.extraInTarget.mkString(", ")}<br>" +
+          s"Type Mismatches: ${res.typeMismatches.mkString(", ")}"
+        }
+      }.getOrElse("Not Performed")
+      sb.append(s"<tr><td>Schema Drift</td><td>$driftResult</td></tr>")
     }
 
+    // Extra/Missing Check
     if (config.doExtraMissingCheck) {
-      sb.append("<h3>Extra/Missing Records</h3>")
-      result.extraMissingResult.foreach { res =>
-        sb.append(s"<p>Missing in Target: ${res.missingInTarget.count()}</p>")
-        if (res.missingInTarget.count() > 0 && res.missingInTarget.count() < 10) {
-          sb.append(DataFrameConverter.toHtml(res.missingInTarget.limit(10)))
-        }
-        sb.append(s"<p>Extra in Source: ${res.extraInSource.count()}</p>")
-        if (res.extraInSource.count() > 0 && res.extraInSource.count() < 10) {
-          sb.append(DataFrameConverter.toHtml(res.extraInSource.limit(10)))
-        }
-      }
+      val extraMissingResult = result.extraMissingResult.map { res =>
+        s"Missing in Target: ${res.missingInTarget.count()}<br>" +
+        s"Extra in Source: ${res.extraInSource.count()}"
+      }.getOrElse("Not Performed")
+      sb.append(s"<tr><td>Extra/Missing Records</td><td>$extraMissingResult</td></tr>")
     }
 
+    // Column Comparison
     if (config.doColumnComparison) {
-      sb.append("<h3>Column Comparison</h3>")
-      result.columnComparisonResults.filterNot(_.mismatches.isEmpty).foreach { res =>
-        sb.append(s"<h4>Mismatches for ${res.sourceColumn} vs ${res.targetColumn}</h4>")
-        val mismatchCount = res.mismatches.count()
-        sb.append(s"<p>Count: $mismatchCount</p>")
-        if (mismatchCount > 0 && mismatchCount < 10) {
-          sb.append(DataFrameConverter.toHtml(res.mismatches.limit(10)))
-        }
-      }
+      val columnComparisonResult = result.columnComparisonResults.map { res =>
+        s"${res.sourceColumn} vs ${res.targetColumn}: ${res.mismatches.count()} mismatches"
+      }.mkString("<br>")
+      sb.append(s"<tr><td>Column Comparison</td><td>${if (columnComparisonResult.isEmpty) "No mismatches" else columnComparisonResult}</td></tr>")
     }
 
+    // Threshold Validation
     if (config.doThresholdValidation) {
-      sb.append("<h3>Threshold Validation</h3>")
-      result.thresholdValidationResults.filterNot(_.breaches.isEmpty).foreach { res =>
-        sb.append(s"<h4>Breaches for ${res.columnName}</h4>")
-        val breachCount = res.breaches.count()
-        sb.append(s"<p>Count: $breachCount</p>")
-        if (breachCount > 0 && breachCount < 10) {
-          sb.append(DataFrameConverter.toHtml(res.breaches.limit(10)))
-        }
-      }
+      val thresholdResult = result.thresholdValidationResults.map { res =>
+        s"${res.columnName}: ${res.breaches.count()} breaches"
+      }.mkString("<br>")
+      sb.append(s"<tr><td>Threshold Validation</td><td>${if (thresholdResult.isEmpty) "No breaches" else thresholdResult}</td></tr>")
     }
 
+    // Business Rule Validation
     if (config.doBusinessRuleValidation) {
-      sb.append("<h3>Business Rule Validation</h3>")
-      result.businessRuleValidationResult.foreach { res =>
-        val mismatchCount = res.count()
-        sb.append(s"<p>Mismatches: $mismatchCount</p>")
-        if (mismatchCount > 0 && mismatchCount < 10) {
-          sb.append(DataFrameConverter.toHtml(res.limit(10)))
-        }
-      }
+      val businessRuleResult = result.businessRuleValidationResult.map { res =>
+        s"${res.count()} mismatches"
+      }.getOrElse("Not Performed")
+      sb.append(s"<tr><td>Business Rule Validation</td><td>$businessRuleResult</td></tr>")
     }
 
+    sb.append("</table>")
     sb.toString()
   }
 }

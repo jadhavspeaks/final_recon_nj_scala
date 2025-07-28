@@ -64,7 +64,7 @@ class AuditWriter(spark: SparkSession, config: ReconciliationConfig) {
                         .withColumn("status", lit(result.status))
                         .withColumn("mismatch_details", to_json(struct(df.columns.map(c => col(c).cast("string")): _*)))
 
-        Some(auditDf.select(
+        auditDf.select(
           col("job_id"),
           col("job_name"),
           col("execution_timestamp"),
@@ -76,19 +76,7 @@ class AuditWriter(spark: SparkSession, config: ReconciliationConfig) {
           lit(null).cast("long").as("execution_time_in_seconds"),
           col("mismatch_type"),
           col("mismatch_details")
-        Some(auditDf.select(
-          col("job_id"),
-          col("job_name"),
-          col("execution_timestamp"),
-          col("audit_type"),
-          col("status"),
-          lit(null).cast("long").as("sourceCount"),
-          lit(null).cast("long").as("targetCount"),
-          lit(null).cast("boolean").as("countMatch"),
-          lit(null).cast("long").as("execution_time_in_seconds"),
-          col("mismatch_type"),
-          col("mismatch_details")
-        ).as[AuditRecord])
+        ).as[AuditRecord]
       } else {
         None
       }

@@ -17,16 +17,32 @@ class ReconciliationTypeExecutor(spark: SparkSession, config: ReconciliationConf
       result = result.copy(sourceCount = sourceCount, targetCount = targetCount, countMatch = matchStatus)
     }
     if (config.doSchemaDriftDetection) {
-      result = result.copy(schemaDriftResults = Some(schemaDriftDetection(source, target)))
+      val schemaDriftResult = schemaDriftDetection(source, target)
+      if (schemaDriftResult.missingInTarget.nonEmpty || schemaDriftResult.extraInTarget.nonEmpty || schemaDriftResult.typeMismatches.nonEmpty) {
+        result = result.copy(status = "FAILURE")
+      }
+      result = result.copy(schemaDriftResults = Some(schemaDriftResult))
     }
     if (config.doExtraMissingCheck) {
-      result = result.copy(extraMissingResult = Some(extraMissingCheck(source, target)))
+      val extraMissingResult = extraMissingCheck(source, target)
+      if (extraMissingResult.missingInTarget.count() > 0 || extraMissingResult.extraInSource.count() > 0) {
+        result = result.copy(status = "FAILURE")
+      }
+      result = result.copy(extraMissingResult = Some(extraMissingResult))
     }
     if (config.doColumnComparison) {
-      result = result.copy(columnComparisonResults = columnComparison(source, target))
+      val columnComparisonResults = columnComparison(source, target)
+      if (columnComparisonResults.exists(_.mismatches.count() > 0)) {
+        result = result.copy(status = "FAILURE")
+      }
+      result = result.copy(columnComparisonResults = columnComparisonResults)
     }
     if (config.doThresholdValidation) {
-      result = result.copy(thresholdValidationResults = thresholdValidation(source, target))
+      val thresholdValidationResults = thresholdValidation(source, target)
+      if (thresholdValidationResults.exists(_.breaches.count() > 0)) {
+        result = result.copy(status = "FAILURE")
+      }
+      result = result.copy(thresholdValidationResults = thresholdValidationResults)
     }
     result
   }

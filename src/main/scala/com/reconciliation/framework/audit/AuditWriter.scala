@@ -7,14 +7,6 @@ import org.apache.spark.sql.functions._
 import java.sql.Timestamp
 import java.time.Instant
 
-case class AuditDetails(
-  schema_drift: Option[SchemaDriftResult],
-  extra_missing: Option[ExtraMissingResult],
-  column_comparison: Seq[ColumnComparisonResult],
-  threshold_validation: Seq[ThresholdValidationResult],
-  business_rule_validation: Option[DataFrame]
-)
-
 case class AuditRecord(
   job_id: Long,
   job_name: String,

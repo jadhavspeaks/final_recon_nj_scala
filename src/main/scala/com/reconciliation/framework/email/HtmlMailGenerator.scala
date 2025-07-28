@@ -23,8 +23,8 @@ class HtmlMailGenerator(config: ReconciliationConfig) {
       msg.setSubject(s"${config.emailSubject} - ${result.status}")
       msg.setContent(buildHtmlBody(result), "text/html")
 
-      // Transport.send(msg) // Uncomment to send
-      println("Email report generated. (Sending is disabled in this skeleton).")
+      Transport.send(msg)
+      println("Email report generated and sent.")
 
     } catch {
       case e: MessagingException => e.printStackTrace()

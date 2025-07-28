@@ -63,7 +63,13 @@ class AuditWriter(spark: SparkSession, config: ReconciliationConfig) {
       )).getOrElse(Seq.empty) ++
       result.columnComparisonResults.map(r => r.mismatches.withColumn("mismatch_type", lit(s"column_mismatch_${r.sourceColumn}"))) ++
       result.thresholdValidationResults.map(r => r.breaches.withColumn("mismatch_type", lit(s"threshold_breach_${r.columnName}"))) ++
-      result.businessRuleValidationResult.map(df => Seq(df.withColumn("mismatch_type", lit("business_rule_mismatch")))).getOrElse(Seq.empty)
+      result.businessRuleValidationResult.map(df => Seq(df.withColumn("mismatch_type", lit("business_rule_mismatch")))).getOrElse(Seq.empty) ++
+      result.schemaDriftResults.map { r =>
+        val missingInTarget = spark.createDataset(r.missingInTarget.toSeq).toDF("mismatch_details").withColumn("mismatch_type", lit("schema_drift_missing_in_target"))
+        val extraInTarget = spark.createDataset(r.extraInTarget.toSeq).toDF("mismatch_details").withColumn("mismatch_type", lit("schema_drift_extra_in_target"))
+        val typeMismatches = spark.createDataset(r.typeMismatches.toSeq).toDF("mismatch_details").withColumn("mismatch_type", lit("schema_drift_type_mismatch"))
+        Seq(missingInTarget, extraInTarget, typeMismatches)
+      }.getOrElse(Seq.empty)
     )
 
     mismatchDfs.foreach { df =>

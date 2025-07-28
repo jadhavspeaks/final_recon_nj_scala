@@ -82,7 +82,8 @@ class ReconciliationTypeExecutor(spark: SparkSession, config: ReconciliationConf
     val aliasedMappedTarget = config.columnMappings.foldLeft(mappedTarget) {
       case (df, (sourceCol, targetCol)) => df.withColumnRenamed(targetCol, sourceCol)
     }
-    val joined = source.join(aliasedMappedTarget, joinKeys, "inner")
+    val finalTarget = aliasedMappedTarget.select(config.sourcePrimaryKeys.head, config.sourcePrimaryKeys.tail ++ config.columnMappings.keys.toSeq: _*)
+    val joined = source.join(finalTarget, joinKeys, "inner")
 
     config.columnMappings.flatMap { case (sourceCol, targetCol) =>
       val mismatchExpr = col(sourceCol) =!= col(targetCol)
@@ -109,7 +110,10 @@ class ReconciliationTypeExecutor(spark: SparkSession, config: ReconciliationConf
   private def thresholdValidation(source: DataFrame, target: DataFrame): Seq[ThresholdValidationResult] = {
     val mappedTarget = ColumnMapper.mapColumns(target, config)
     val joinKeys = config.sourcePrimaryKeys
-    val joined = source.join(mappedTarget, joinKeys, "inner")
+    val aliasedMappedTarget = config.columnMappings.foldLeft(mappedTarget) {
+      case (df, (sourceCol, targetCol)) => df.withColumnRenamed(targetCol, sourceCol)
+    }
+    val joined = source.join(aliasedMappedTarget, joinKeys, "inner")
 
     config.thresholdSettings.map { case (colName, (thresholdType, thresholdValue)) =>
       val (sourceCol, targetCol) = if (config.columnMappings.contains(colName)) (colName, config.columnMappings(colName)) else (colName, colName)

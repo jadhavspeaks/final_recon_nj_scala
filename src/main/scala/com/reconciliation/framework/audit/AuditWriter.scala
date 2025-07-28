@@ -15,7 +15,8 @@ case class AuditSummary(
   status: String,
   sourceCount: Long,
   targetCount: Long,
-  countMatch: Boolean
+  countMatch: Boolean,
+  execution_time_in_seconds: Long
 )
 
 case class AuditMismatch(
@@ -44,7 +45,8 @@ class AuditWriter(spark: SparkSession, config: ReconciliationConfig) {
         status = result.status,
         sourceCount = result.sourceCount,
         targetCount = result.targetCount,
-        countMatch = result.countMatch
+        countMatch = result.countMatch,
+        execution_time_in_seconds = (result.endTime - result.startTime) / 1000
       )
     ).toDF()
 

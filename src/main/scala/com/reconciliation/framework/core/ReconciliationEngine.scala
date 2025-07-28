@@ -28,7 +28,7 @@ class ReconciliationEngine(spark: SparkSession, config: ReconciliationConfig) ex
       }
 
       val finalStatus = if (result.countMatch && result.schemaDriftResults.forall(r => r.missingInTarget.isEmpty && r.extraInTarget.isEmpty && r.typeMismatches.isEmpty) && result.extraMissingResult.forall(r => r.missingInTarget.isEmpty && r.extraInSource.isEmpty) && result.columnComparisonResults.forall(_.mismatches.isEmpty) && result.thresholdValidationResults.forall(_.breaches.isEmpty)) "SUCCESS" else "FAILURE"
-      result = result.copy(status = finalStatus)
+      result = result.copy(status = finalStatus, endTime = System.currentTimeMillis())
 
       log.info(s"Reconciliation finished with status: ${result.status}")
 

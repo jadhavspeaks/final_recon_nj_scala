@@ -13,7 +13,9 @@ case class ReconciliationResult(
     columnComparisonResults: Seq[ColumnComparisonResult] = Seq.empty,
     thresholdValidationResults: Seq[ThresholdValidationResult] = Seq.empty,
     businessRuleValidationResult: Option[DataFrame] = None, // Mismatches from business rule
-    status: String = "SUCCESS"
+    status: String = "SUCCESS",
+    startTime: Long = System.currentTimeMillis(),
+    endTime: Long = 0
 )
 
 case class SchemaDriftResult(

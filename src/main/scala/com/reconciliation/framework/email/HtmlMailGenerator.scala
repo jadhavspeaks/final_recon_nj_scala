@@ -18,7 +18,7 @@ class HtmlMailGenerator(config: ReconciliationConfig) {
     try {
       val msg = new MimeMessage(session)
       msg.setFrom(new InternetAddress("no-reply@reconciliation.framework"))
-      val recipients = config.emailRecipients.map(new InternetAddress(_)).toArray
+      val recipients = config.emailRecipients.map(new InternetAddress(_)).toArray[Address]
       msg.setRecipients(Message.RecipientType.TO, recipients)
       msg.setSubject(s"${config.emailSubject} - ${result.status}")
       msg.setContent(buildHtmlBody(result), "text/html")

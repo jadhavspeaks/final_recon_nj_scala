@@ -51,7 +51,7 @@ class ReconciliationTypeExecutor(spark: SparkSession, config: ReconciliationConf
     val targetSchema = target.schema.fields.map(f => (f.name, f.dataType.simpleString)).toMap
     val missingInTarget = sourceSchema.keys.toSet -- targetSchema.keys
     val extraInTarget = targetSchema.keys.toSet -- sourceSchema.keys
-    val commonCols = sourceSchema.keys.toSet.intersect(targetSchema.keys)
+    val commonCols = sourceSchema.keys.toSet.intersect(targetSchema.keys.toSet)
     val typeMismatches = commonCols.filter(c => sourceSchema(c) != targetSchema(c))
     SchemaDriftResult(missingInTarget, extraInTarget, typeMismatches)
   }

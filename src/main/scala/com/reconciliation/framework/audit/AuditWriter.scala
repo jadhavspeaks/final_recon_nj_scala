@@ -7,26 +7,18 @@ import org.apache.spark.sql.functions._
 import java.sql.Timestamp
 import java.time.Instant
 
-case class AuditSummary(
+case class AuditRecord(
   job_id: Long,
   job_name: String,
   execution_timestamp: Timestamp,
   audit_type: String,
   status: String,
-  sourceCount: Long,
-  targetCount: Long,
-  countMatch: Boolean,
-  execution_time_in_seconds: Long
-)
-
-case class AuditMismatch(
-  job_id: Long,
-  job_name: String,
-  execution_timestamp: Timestamp,
-  audit_type: String,
-  status: String,
-  mismatch_type: String,
-  mismatch_details: String
+  sourceCount: Option[Long],
+  targetCount: Option[Long],
+  countMatch: Option[Boolean],
+  execution_time_in_seconds: Option[Long],
+  mismatch_type: Option[String],
+  mismatch_details: Option[String]
 )
 
 class AuditWriter(spark: SparkSession, config: ReconciliationConfig) {
@@ -35,28 +27,21 @@ class AuditWriter(spark: SparkSession, config: ReconciliationConfig) {
   def writeAuditLog(result: ReconciliationResult): Unit = {
     val executionTimestamp = Timestamp.from(Instant.now())
 
-    // Write summary record
-    val summary = Seq(
-      AuditSummary(
-        job_id = config.jobId,
-        job_name = config.jobName,
-        execution_timestamp = executionTimestamp,
-        audit_type = "SUMMARY",
-        status = result.status,
-        sourceCount = result.sourceCount,
-        targetCount = result.targetCount,
-        countMatch = result.countMatch,
-        execution_time_in_seconds = (result.endTime - result.startTime) / 1000
-      )
-    ).toDF()
+    val summaryRecord = AuditRecord(
+      job_id = config.jobId,
+      job_name = config.jobName,
+      execution_timestamp = executionTimestamp,
+      audit_type = "SUMMARY",
+      status = result.status,
+      sourceCount = Some(result.sourceCount),
+      targetCount = Some(result.targetCount),
+      countMatch = Some(result.countMatch),
+      execution_time_in_seconds = Some((result.endTime - result.startTime) / 1000),
+      mismatch_type = None,
+      mismatch_details = None
+    )
 
-    summary.write
-      .mode("append")
-      .format("hive")
-      .saveAsTable(config.auditHiveTable)
-
-    // Write mismatch records
-    val mismatchDfs = (
+    val mismatchRecords = (
       result.extraMissingResult.map(r => Seq(
         r.missingInTarget.withColumn("mismatch_type", lit("missing_in_target")),
         r.extraInSource.withColumn("mismatch_type", lit("extra_in_source"))
@@ -70,24 +55,26 @@ class AuditWriter(spark: SparkSession, config: ReconciliationConfig) {
         val typeMismatches = spark.createDataset(r.typeMismatches.toSeq).toDF("mismatch_details").withColumn("mismatch_type", lit("schema_drift_type_mismatch"))
         Seq(missingInTarget, extraInTarget, typeMismatches)
       }.getOrElse(Seq.empty)
-    )
-
-    mismatchDfs.foreach { df =>
+    ).flatMap { df =>
       if (!df.isEmpty) {
         val auditDf = df.withColumn("job_id", lit(config.jobId))
                         .withColumn("job_name", lit(config.jobName))
                         .withColumn("execution_timestamp", lit(executionTimestamp))
                         .withColumn("audit_type", lit("MISMATCH"))
                         .withColumn("status", lit(result.status))
-                        .withColumn("mismatch_details", to_json(struct(df.columns.map(col): _*)))
+                        .withColumn("mismatch_details", to_json(struct(df.columns.map(c => col(c).cast("string")): _*)))
 
-        auditDf.select("job_id", "job_name", "execution_timestamp", "audit_type", "status", "mismatch_type", "mismatch_details")
-          .as[AuditMismatch]
-          .write
-          .mode("append")
-          .format("hive")
-          .saveAsTable(config.auditHiveTable)
+        Some(auditDf.as[AuditRecord])
+      } else {
+        None
       }
     }
+
+    val auditData = Seq(summaryRecord) ++ mismatchRecords
+    spark.createDataset(auditData)
+      .write
+      .mode("append")
+      .format("hive")
+      .saveAsTable(config.auditHiveTable)
   }
 }

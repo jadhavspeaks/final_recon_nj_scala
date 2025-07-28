@@ -83,8 +83,10 @@ class AuditWriter(spark: SparkSession, config: ReconciliationConfig) {
       }
     }
 
-    val auditData = Seq(summaryRecord) ++ mismatchRecords
-    spark.createDataset(auditData)
+    val auditData = spark.createDataset(Seq(summaryRecord))
+    val mismatchData = spark.createDataset(mismatchRecords)
+
+    auditData.unionByName(mismatchData)
       .write
       .mode("append")
       .format("hive")

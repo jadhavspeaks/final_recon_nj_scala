@@ -100,7 +100,7 @@ class ReconciliationTypeExecutor(spark: SparkSession, config: ReconciliationConf
       case (df, (sourceCol, targetCol)) => df.withColumnRenamed(targetCol, sourceCol)
     }
 
-    val joined = source.as("s").join(aliasedMappedTarget.as("t"), joinKeys, "outer")
+    val joined = source.as("s").join(aliasedMappedTarget.as("t"), joinKeys.map(c => col(s"s.$c") === col(s"t.$c")), "outer")
 
     config.columnMappings.flatMap { case (sourceCol, targetCol) =>
       val mismatchExpr = (col(s"s.$sourceCol").isNull and col(s"t.$sourceCol").isNotNull) or

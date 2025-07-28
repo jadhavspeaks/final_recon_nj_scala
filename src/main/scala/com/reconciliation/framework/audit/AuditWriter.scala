@@ -64,7 +64,7 @@ class AuditWriter(spark: SparkSession, config: ReconciliationConfig) {
                         .withColumn("status", lit(result.status))
                         .withColumn("mismatch_details", to_json(struct(df.columns.map(c => col(c).cast("string")): _*)))
 
-        auditDf.select(
+        val auditRecord = auditDf.select(
           col("job_id"),
           col("job_name"),
           col("execution_timestamp"),
@@ -77,8 +77,9 @@ class AuditWriter(spark: SparkSession, config: ReconciliationConfig) {
           col("mismatch_type"),
           col("mismatch_details")
         ).as[AuditRecord]
+        Seq(auditRecord.first())
       } else {
-        None
+        Seq.empty
       }
     }
 

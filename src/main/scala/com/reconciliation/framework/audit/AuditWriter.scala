@@ -8,7 +8,7 @@ import java.sql.Timestamp
 import java.time.Instant
 
 case class AuditSummary(
-  job_id: String,
+  job_id: Long,
   job_name: String,
   execution_timestamp: Timestamp,
   audit_type: String,

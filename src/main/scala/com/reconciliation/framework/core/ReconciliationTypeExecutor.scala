@@ -101,8 +101,8 @@ class ReconciliationTypeExecutor(spark: SparkSession, config: ReconciliationConf
       }
     }
 
-    // Combine join expressions with &&
-    val joinExpr = joinKeys.map(c => source(c) === aliasedTarget(c)).reduce(_ && _)
+    // Combine join expressions with &&, using aliased column names
+    val joinExpr = joinKeys.map(c => col(s"s.$c") === col(s"t.$c")).reduce(_ && _)
     val joined = source.as("s").join(aliasedTarget.as("t"), joinExpr, "outer")
 
     config.columnMappings.flatMap { case (sourceCol, targetCol) =>

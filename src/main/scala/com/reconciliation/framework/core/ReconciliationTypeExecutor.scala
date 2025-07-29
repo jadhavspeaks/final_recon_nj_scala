@@ -32,7 +32,7 @@ class ReconciliationTypeExecutor(spark: SparkSession, config: ReconciliationConf
     }
     if (config.doColumnComparison) {
       val columnComparisonResults = columnComparison(source, target)
-      if (columnComparisonResults.nonEmpty) {
+      if (columnComparisonResults.exists(_.mismatches.count() > 0)) {
         result = result.copy(status = "FAILURE")
       }
       result = result.copy(columnComparisonResults = columnComparisonResults)
@@ -88,23 +88,28 @@ class ReconciliationTypeExecutor(spark: SparkSession, config: ReconciliationConf
     val sourceCols = source.columns.toSet
     val targetCols = target.columns.toSet
 
-    val missingInTarget = (sourceCols -- targetCols).map { col =>
-      ColumnComparisonResult(
-        sourceColumn = col,
+    val missingInTarget = (sourceCols -- targetCols).toSeq.sorted
+    val extraInTarget = (targetCols -- sourceCols).toSeq.sorted
+
+    var results = Seq.empty[ColumnComparisonResult]
+
+    if (missingInTarget.nonEmpty) {
+      results = results :+ ColumnComparisonResult(
+        sourceColumn = "Columns present only in source",
         targetColumn = "N/A",
-        mismatches = spark.emptyDataFrame
+        mismatches = missingInTarget.toDF("column_name")
       )
-    }.toSeq
+    }
 
-    val extraInTarget = (targetCols -- sourceCols).map { col =>
-      ColumnComparisonResult(
+    if (extraInTarget.nonEmpty) {
+      results = results :+ ColumnComparisonResult(
         sourceColumn = "N/A",
-        targetColumn = col,
-        mismatches = spark.emptyDataFrame
+        targetColumn = "Columns present only in target",
+        mismatches = extraInTarget.toDF("column_name")
       )
-    }.toSeq
+    }
 
-    missingInTarget ++ extraInTarget
+    results
   }
 
   private def thresholdValidation(source: DataFrame, target: DataFrame): Seq[ThresholdValidationResult] = {

@@ -32,7 +32,7 @@ class ReconciliationTypeExecutor(spark: SparkSession, config: ReconciliationConf
     }
     if (config.doColumnComparison) {
       val columnComparisonResults = columnComparison(source, target)
-      if (columnComparisonResults.exists(_.mismatches.count() > 0)) {
+      if (columnComparisonResults.nonEmpty) {
         result = result.copy(status = "FAILURE")
       }
       result = result.copy(columnComparisonResults = columnComparisonResults)
@@ -85,54 +85,26 @@ class ReconciliationTypeExecutor(spark: SparkSession, config: ReconciliationConf
   }
 
   private def columnComparison(source: DataFrame, target: DataFrame): Seq[ColumnComparisonResult] = {
-    val joinKeys = config.sourcePrimaryKeys
+    val sourceCols = source.columns.toSet
+    val targetCols = target.columns.toSet
 
-    // Create a map for all column renames (PKs and data columns) from target to source names
-    val pkRenames = config.targetPrimaryKeys.zip(config.sourcePrimaryKeys).toMap
-    val colRenames = config.columnMappings.map { case (source, target) => (target, source) }
-    val allRenames = pkRenames ++ colRenames
-
-    // Rename all necessary columns in the target DataFrame in one pass
-    val aliasedTarget = allRenames.foldLeft(target) { case (df, (oldName, newName)) =>
-      if (df.columns.contains(oldName)) {
-        df.withColumnRenamed(oldName, newName)
-      } else {
-        df
-      }
-    }
-
-    // Swapped aliases: s = aliasedTarget, t = source
-    val joinExpr = joinKeys.map(c => col(s"s.$c") === col(s"t.$c")).reduce(_ && _)
-    val joined = aliasedTarget.as("s").join(source.as("t"), joinExpr, "outer")
-
-    config.columnMappings.flatMap { case (sourceCol, targetCol) =>
-      // Note the swapped aliases in column references
-      val sCol = col(s"s.$sourceCol") // target value
-      val tCol = col(s"t.$sourceCol") // source value
-
-      val mismatchExpr = (sCol.isNull and tCol.isNotNull) or
-        (sCol.isNotNull and tCol.isNull) or
-        (sCol =!= tCol)
-
-      val mismatches = joined.filter(mismatchExpr)
-
-      if (mismatches.head(1).isEmpty) {
-        None
-      } else {
-        Some(
-          ColumnComparisonResult(
-            sourceColumn = sourceCol,
-            targetColumn = targetCol, // Reporting original target column name
-            mismatches = mismatches.select(
-              concat_ws(",", joinKeys.map(c => col(s"t.$c")): _*).as("primary_key"), // PK from source ('t')
-              lit(sourceCol).as("mismatched_column"),
-              tCol.cast("string").as("source_value"), // source value from 't'
-              sCol.cast("string").as("target_value")  // target value from 's'
-            )
-          )
-        )
-      }
+    val missingInTarget = (sourceCols -- targetCols).map { col =>
+      ColumnComparisonResult(
+        sourceColumn = col,
+        targetColumn = "N/A",
+        mismatches = spark.emptyDataFrame
+      )
     }.toSeq
+
+    val extraInTarget = (targetCols -- sourceCols).map { col =>
+      ColumnComparisonResult(
+        sourceColumn = "N/A",
+        targetColumn = col,
+        mismatches = spark.emptyDataFrame
+      )
+    }.toSeq
+
+    missingInTarget ++ extraInTarget
   }
 
   private def thresholdValidation(source: DataFrame, target: DataFrame): Seq[ThresholdValidationResult] = {

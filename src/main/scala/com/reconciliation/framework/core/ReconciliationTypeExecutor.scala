@@ -101,14 +101,14 @@ class ReconciliationTypeExecutor(spark: SparkSession, config: ReconciliationConf
       }
     }
 
-    // Combine join expressions with &&, using aliased column names
+    // Swapped aliases: s = aliasedTarget, t = source
     val joinExpr = joinKeys.map(c => col(s"s.$c") === col(s"t.$c")).reduce(_ && _)
-    val joined = source.as("s").join(aliasedTarget.as("t"), joinExpr, "outer")
+    val joined = aliasedTarget.as("s").join(source.as("t"), joinExpr, "outer")
 
     config.columnMappings.flatMap { case (sourceCol, targetCol) =>
-      // All columns on the target DataFrame are now aliased to source column names
-      val sCol = col(s"s.$sourceCol")
-      val tCol = col(s"t.$sourceCol")
+      // Note the swapped aliases in column references
+      val sCol = col(s"s.$sourceCol") // target value
+      val tCol = col(s"t.$sourceCol") // source value
 
       val mismatchExpr = (sCol.isNull and tCol.isNotNull) or
         (sCol.isNotNull and tCol.isNull) or
@@ -124,10 +124,10 @@ class ReconciliationTypeExecutor(spark: SparkSession, config: ReconciliationConf
             sourceColumn = sourceCol,
             targetColumn = targetCol, // Reporting original target column name
             mismatches = mismatches.select(
-              concat_ws(",", joinKeys.map(c => col(s"s.$c")): _*).as("primary_key"),
+              concat_ws(",", joinKeys.map(c => col(s"t.$c")): _*).as("primary_key"), // PK from source ('t')
               lit(sourceCol).as("mismatched_column"),
-              sCol.cast("string").as("source_value"),
-              tCol.cast("string").as("target_value")
+              tCol.cast("string").as("source_value"), // source value from 't'
+              sCol.cast("string").as("target_value")  // target value from 's'
             )
           )
         )

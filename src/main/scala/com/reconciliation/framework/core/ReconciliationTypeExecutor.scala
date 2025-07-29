@@ -85,40 +85,49 @@ class ReconciliationTypeExecutor(spark: SparkSession, config: ReconciliationConf
   }
 
   private def columnComparison(source: DataFrame, target: DataFrame): Seq[ColumnComparisonResult] = {
-    val sourcePKs = config.sourcePrimaryKeys
-    val targetPKs = config.targetPrimaryKeys
-    val pkMapping = sourcePKs.zip(targetPKs).toMap
-
-    val aliasedTarget = targetPKs.foldLeft(target) { (df, pk) =>
-      df.withColumnRenamed(pk, pkMapping.find(_._2 == pk).get._1)
-    }
-
-    val mappedTarget = ColumnMapper.mapColumns(aliasedTarget, config)
     val joinKeys = config.sourcePrimaryKeys
 
-    val aliasedMappedTarget = config.columnMappings.foldLeft(mappedTarget) {
-      case (df, (sourceCol, targetCol)) => df.withColumnRenamed(targetCol, sourceCol)
+    // Create a map for all column renames (PKs and data columns) from target to source names
+    val pkRenames = config.targetPrimaryKeys.zip(config.sourcePrimaryKeys).toMap
+    val colRenames = config.columnMappings.map { case (source, target) => (target, source) }
+    val allRenames = pkRenames ++ colRenames
+
+    // Rename all necessary columns in the target DataFrame in one pass
+    val aliasedTarget = allRenames.foldLeft(target) { case (df, (oldName, newName)) =>
+      if (df.columns.contains(oldName)) {
+        df.withColumnRenamed(oldName, newName)
+      } else {
+        df
+      }
     }
 
-    val joined = source.as("s").join(aliasedMappedTarget.as("t"), joinKeys.map(c => col(s"s.$c") === col(s"t.$c")), "outer")
+    // Combine join expressions with &&
+    val joinExpr = joinKeys.map(c => source(c) === aliasedTarget(c)).reduce(_ && _)
+    val joined = source.as("s").join(aliasedTarget.as("t"), joinExpr, "outer")
 
     config.columnMappings.flatMap { case (sourceCol, targetCol) =>
-      val mismatchExpr = (col(s"s.$sourceCol").isNull and col(s"t.$sourceCol").isNotNull) or
-                         (col(s"s.$sourceCol").isNotNull and col(s"t.$sourceCol").isNull) or
-                         (col(s"s.$sourceCol") =!= col(s"t.$sourceCol"))
+      // All columns on the target DataFrame are now aliased to source column names
+      val sCol = col(s"s.$sourceCol")
+      val tCol = col(s"t.$sourceCol")
+
+      val mismatchExpr = (sCol.isNull and tCol.isNotNull) or
+        (sCol.isNotNull and tCol.isNull) or
+        (sCol =!= tCol)
+
       val mismatches = joined.filter(mismatchExpr)
-      if (mismatches.isEmpty) {
+
+      if (mismatches.head(1).isEmpty) {
         None
       } else {
         Some(
           ColumnComparisonResult(
             sourceColumn = sourceCol,
-            targetColumn = targetCol,
+            targetColumn = targetCol, // Reporting original target column name
             mismatches = mismatches.select(
               concat_ws(",", joinKeys.map(c => col(s"s.$c")): _*).as("primary_key"),
               lit(sourceCol).as("mismatched_column"),
-              col(s"s.$sourceCol").cast("string").as("source_value"),
-              col(s"t.$sourceCol").cast("string").as("target_value")
+              sCol.cast("string").as("source_value"),
+              tCol.cast("string").as("target_value")
             )
           )
         )
